@@ -1,0 +1,58 @@
+* =org-req= - An org-mode Requirements Library
+*WARNING*: Very unstable and untested. This is my first stab at
+honest-to-goodness Elisp coding, and I haven't tested it much. Besides
+that, features are extremely limited.
+
+** Goals
+Add convenience functions to org-mode that enable the following when
+working with requirements and the artifacts surrounding them:
+
+- track dependencies
+- keep links consistent
+- export to usable formats (i.e. org-tables or prettified org-mode files)
+** Sample Format
+The current implementation (which is subject to change) takes a file
+of the following format:
+#+BEGIN_SRC org
+  ,* Category-Abbrev
+  ,** Long description of item name
+     :PROPERTIES:
+     :ID:       15c8038b-8f68-44f4-ad73-968420a1b831
+     :TRACES_TO: 397e946c-efb1-426f-b2ec-55af0c38eaa9 9cf90e5a-9b96-4151-bb81-67c4eb9ab46f
+     :END:
+  ,** Long description of other item
+     :PROPERTIES:
+     :ID:       c79d7134-78d8-4b9e-91b3-27011c7cd83e
+     :TRACES_TO: 9cf90e5a-9b96-4151-bb81-67c4eb9ab46f
+     :END:
+  ,* Another-Category
+  ,** A linked item
+     :PROPERTIES:
+     :TRACES_FROM: 15c8038b-8f68-44f4-ad73-968420a1b831
+     :ID:       397e946c-efb1-426f-b2ec-55af0c38eaa9
+     :END:
+  ,** Another linked item
+     :PROPERTIES:
+     :TRACES_FROM: 15c8038b-8f68-44f4-ad73-968420a1b831 c79d7134-78d8-4b9e-91b3-27011c7cd83e
+     :ID:       9cf90e5a-9b96-4151-bb81-67c4eb9ab46f
+     :END:
+#+END_SRC
+
+*** Explanation of Custom Properties
+- =ID= :: The ID can be whatever UID you want, but it is easiest to
+          use org-mode's builtin =org-id-copy= functionality.
+- =TRACES_TO= :: Indicates an outgoing dependency.
+- =TRACES_FROM= :: Indicates a dependency on another item.
+*** Category Ordering
+The traces must form a directed acyclic graph (DAG), meaning no cycles
+and no going back. Additionally, no two items in the same category can
+trace to each other, and no item in a later category may trace to an
+earlier category.
+
+These restrictions may be loosened in the future.
+** Functions
+*** =or/translate-buffer=
+Translates the current buffer into a traceability matrix (without
+column labels) into a new buffer named =output.org= (can you tell this
+was put together in an evening? because this was put together in an
+evening).
