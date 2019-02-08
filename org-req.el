@@ -6,14 +6,30 @@
 (require 'seq)
 (require 'subr-x)
 
-(defun org-req-translate-buffer ()
-  "Parse the current `org-mode' buffer and create a new buffer with a traceability matrix."
+(defun org-req-buffer-export ()
+  "Parse the current buffer and create a new buffer with cleaned requirements.
+This cleaned buffer uses generated `CUSTOM_ID''s with links.
+Also checks for consistency in item traceability."
+  (interactive)
+  (let ((items-lists (org-req--parse-buffer)))
+    (org-req--consistency-check-items (apply 'append items-lists))
+    (let ((category-elements (org-req--items-lists-to-headlines items-lists))
+          (new-buffer (get-buffer-create "output.org")))
+      (set-buffer new-buffer)
+      (erase-buffer)
+      (mapc (lambda (category-element)
+              (insert (org-element-interpret-data category-element)))
+            category-elements)
+      (display-buffer new-buffer))))
+
+(defun org-req-buffer-traceability ()
+  "Parse the current buffer and create a new buffer with a traceability matrix."
   (interactive)
   (let* ((items (org-req--parse-buffer))
          (item-chains (org-req--chain-items items))
          (table (org-req--chains-to-table item-chains))
          (filename (buffer-file-name))
-         (new-buffer (get-buffer-create (format "output.org"))))
+         (new-buffer (get-buffer-create "output.org")))
     (set-buffer new-buffer)
     (erase-buffer)
     (insert (org-element-interpret-data table))
@@ -127,6 +143,42 @@ DESTINATION-LISTS is a list of list of items."
                 traces-to-chains)
       (list (list source-item)))))
 
+(defun org-req--consistency-check-items (items)
+  "Check that each tracing link in ITEMS is bi-directional.
+If one is discovered, a placeholder it added to make the link
+bi-directional, and a warning is added to the title showing that
+it was altered."
+  (mapc (lambda (matching-keywords)
+          (let ((starting-keyword (car matching-keywords))
+                (ending-keyword (cdr matching-keywords)))
+            (mapc (lambda (item)
+                    (let* ((item-id (plist-get item :CUSTOM_ID))
+                           (traces-to-ids (plist-get item starting-keyword))
+                           (traces-to-items (mapcar (lambda (id)
+                                                      (org-req--find-item items id))
+                                                    traces-to-ids)))
+                      (mapc (lambda (traces-to-item)
+                              (org-req--consistency-check-item traces-to-item
+                                                               ending-keyword
+                                                               item-id))
+                            traces-to-items)))
+                  items)))
+        '((:TRACES_FROM . :TRACES_TO)
+          (:TRACES_TO . :TRACES_FROM))))
+
+(defun org-req--consistency-check-item (item keyword requester-id)
+  "Check that there is a link for KEYWORD to REQUESTER-ID in ITEM.
+If one is not discovered, a placeholder it added to make the link
+bi-directional, and a warning is added to the title showing that
+it was altered."
+  (unless (member requester-id
+                  (plist-get item keyword))
+    (plist-put item keyword item)
+    (let ((title (plist-get item :TITLE)))
+      (plist-put item :TITLE
+                 (format "(Missing %s link to %s) %s"
+                         keyword requester-id title)))))
+
 (defun org-req--find-item (items custom-id)
   "Return the first item with the given CUSTOM-ID in ITEMS."
   (if-let (found-items (seq-filter (lambda (item)
@@ -149,6 +201,57 @@ DESTINATION-LISTS is a list of list of items."
                                                 chain))))
                         chains))))
 
+(defun org-req--items-lists-to-headlines (items-lists)
+  "Translate the given ITEMS-LISTS into an org element tree."
+  (mapcar (lambda (items)
+            (let ((category-name (plist-get (car items) :CATEGORY_ID)))
+              (apply 'org-element-create
+                     (append (list 'headline (list :level 1
+                                                   :title category-name))
+                             (mapcar 'org-req--item-to-headline items)))))
+          items-lists))
+
+(defun org-req--item-to-headline (item)
+  "Translate the ITEM into an org headline element."
+  (let* ((base-traces-to (plist-get item :TRACES_TO))
+         (base-traces-from (plist-get item :TRACES_FROM))
+         (id (plist-get item :CUSTOM_ID))
+         (base-title (plist-get item :TITLE))
+         (title (format "%s: %s" id base-title)))
+    (let* ((traces-to-links
+            (mapcar (lambda (traces-to-id)
+                      (org-element-create 'link (list :type "custom-id"
+                                                      :path traces-to-id)
+                                          traces-to-id))
+                    base-traces-to))
+           (traces-from-links
+            (mapcar (lambda (traces-from-id)
+                      (org-element-create 'link (list :type "custom-id"
+                                                      :path traces-from-id)
+                                          traces-from-id))
+                    base-traces-from))
+           (property-drawer
+            (org-element-create 'property-drawer nil
+                                ;; (org-element-create 'node-property
+                                ;;                     (list :key 'TRACES_TO
+                                ;;                           :value traces-to-links))
+                                ;; (org-element-create 'node-property
+                                ;;                     (list :key 'TRACES_FROM
+                                ;;                           :value traces-from-links))
+                                (org-element-create 'node-property
+                                                    (list :key 'CUSTOM_ID
+                                                          :value id))))
+           (links
+            (org-element-create
+             'plain-list (list :type 'descriptive)
+             (apply 'org-element-create
+                    (append (list 'item (list :bullet "- ") "Traces To: ")
+                            traces-to-links)))))
+      (org-element-create 'headline (list :level 2
+                                          :title title)
+                          property-drawer
+                          links))))
+
 (defun cons* (item &rest items)
   "Recursive cons on arbitrary number of ITEMS.
 In the base case with only one argument passed, ITEM will be
@@ -156,6 +259,12 @@ returned."
   (if items
       (cons item (apply 'cons* items))
     item))
+
+(defun ormap (items)
+  "Apply or to the list of ITEMS."
+  (or (not items)
+      (car items)
+      (ormap (cdr items))))
 
 (provide 'org-req)
 ;;; org-req.el ends here
