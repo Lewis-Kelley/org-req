@@ -51,7 +51,7 @@ earlier category.
 
 These restrictions may be loosened in the future.
 ** Functions
-*** =or/translate-buffer=
+*** =org-req-translate-buffer=
 Translates the current buffer into a traceability matrix (without
 column labels) into a new buffer named =output.org= (can you tell this
 was put together in an evening? because this was put together in an
