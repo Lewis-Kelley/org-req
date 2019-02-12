@@ -13,14 +13,17 @@ Also checks for consistency in item traceability."
   (interactive)
   (let ((items-lists (org-req--parse-buffer)))
     (org-req--consistency-check-items (apply 'append items-lists))
-    (let ((category-elements (org-req--items-lists-to-headlines items-lists))
+    (let ((items-tables (org-req--items-lists-to-table items-lists))
           (new-buffer (get-buffer-create "output.org")))
       (set-buffer new-buffer)
       (erase-buffer)
-      (mapc (lambda (category-element)
-              (insert (org-element-interpret-data category-element)))
-            category-elements)
+      (mapc (lambda (items-table)
+              (insert (org-element-interpret-data items-table))
+              (insert "\n"))
+            items-tables)
       (display-buffer new-buffer))))
+
+(global-set-key (kbd "C-c r e") 'org-req-buffer-export)
 
 (defun org-req-buffer-traceability ()
   "Parse the current buffer and create a new buffer with a traceability matrix."
@@ -201,56 +204,30 @@ it was altered."
                                                 chain))))
                         chains))))
 
-(defun org-req--items-lists-to-headlines (items-lists)
-  "Translate the given ITEMS-LISTS into an org element tree."
+(defun org-req--items-lists-to-table (items-lists)
+  "Translate the given ITEMS-LISTS into org table elements."
   (mapcar (lambda (items)
             (let ((category-name (plist-get (car items) :CATEGORY_ID)))
               (apply 'org-element-create
-                     (append (list 'headline (list :level 1
-                                                   :title category-name))
-                             (mapcar 'org-req--item-to-headline items)))))
+                     (append (list 'table nil)
+                             (mapcar 'org-req--item-to-table-row items)))))
           items-lists))
 
-(defun org-req--item-to-headline (item)
-  "Translate the ITEM into an org headline element."
-  (let* ((base-traces-to (plist-get item :TRACES_TO))
-         (base-traces-from (plist-get item :TRACES_FROM))
+(defun org-req--item-to-table-row (item)
+  "Translate the ITEM into an org table row element."
+  (let* ((traces-to (plist-get item :TRACES_TO))
+         (traces-from (plist-get item :TRACES_FROM))
          (id (plist-get item :CUSTOM_ID))
-         (base-title (plist-get item :TITLE))
-         (title (format "%s: %s" id base-title)))
-    (let* ((traces-to-links
-            (mapcar (lambda (traces-to-id)
-                      (org-element-create 'link (list :type "custom-id"
-                                                      :path traces-to-id)
-                                          traces-to-id))
-                    base-traces-to))
-           (traces-from-links
-            (mapcar (lambda (traces-from-id)
-                      (org-element-create 'link (list :type "custom-id"
-                                                      :path traces-from-id)
-                                          traces-from-id))
-                    base-traces-from))
-           (property-drawer
-            (org-element-create 'property-drawer nil
-                                ;; (org-element-create 'node-property
-                                ;;                     (list :key 'TRACES_TO
-                                ;;                           :value traces-to-links))
-                                ;; (org-element-create 'node-property
-                                ;;                     (list :key 'TRACES_FROM
-                                ;;                           :value traces-from-links))
-                                (org-element-create 'node-property
-                                                    (list :key 'CUSTOM_ID
-                                                          :value id))))
-           (links
-            (org-element-create
-             'plain-list (list :type 'descriptive)
-             (apply 'org-element-create
-                    (append (list 'item (list :bullet "- ") "Traces To: ")
-                            traces-to-links)))))
-      (org-element-create 'headline (list :level 2
-                                          :title title)
-                          property-drawer
-                          links))))
+         (title (mapconcat 'identity (plist-get item :TITLE) " ")))
+    (apply 'org-element-create (append (list 'table-row nil)
+                                       (list (org-element-create 'table-cell nil id)
+                                             (org-element-create 'table-cell nil title))
+                                       (mapcar (lambda (traces-from-id)
+                                                 (org-element-create 'table-cell nil traces-from-id))
+                                               traces-from)
+                                       (mapcar (lambda (traces-to-id)
+                                                 (org-element-create 'table-cell nil traces-to-id))
+                                               traces-to)))))
 
 (defun cons* (item &rest items)
   "Recursive cons on arbitrary number of ITEMS.
