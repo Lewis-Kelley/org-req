@@ -23,6 +23,7 @@
   "Parse the current `org-mode' buffer to produce a set of plist items.
 Each item has the following properties:
 - `:title' -- a list of the words in the title
+- `:tags' -- a list of tags as strings
 - `:CUSTOM_ID' -- an incrementing number after the category to form a UID
 - `:TRACES_TO' -- a list of custom-id's from the source TRACES_TO property
 - `:TRACES_FROM' -- a list of custom-id's from the source TRACES_FROM property"
@@ -36,7 +37,8 @@ Each item has the following properties:
   "Return a simplified data-structure for items under the given HEADLINE."
   (let* ((category-title (car (org-element-property :title headline)))
          (headlines (org-req--get-sub-headlines headline)))
-    (org-req--parse-items headlines category-title 1)))
+    (unless (org-element-property :commentedp headline)
+      (org-req--parse-items headlines category-title 1))))
 
 (defun org-req--parse-items (items category index)
   "Return a list of simplified data-structures for ITEMS.
