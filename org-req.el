@@ -19,6 +19,21 @@
     (insert (org-element-interpret-data table))
     (display-buffer new-buffer)))
 
+(defun org-req-export-buffer ()
+  "Parse the current `org-mode' buffer and create a new buffer with a table of all the requirements."
+  (interactive)
+  (let* ((items (org-req--parse-buffer))
+         (tables (org-req--items-to-tables items))
+         (new-buffer (get-buffer-create (format "output.org"))))
+    (set-buffer new-buffer)
+    (erase-buffer)
+    (mapc (lambda (table)
+            (insert (org-element-interpret-data table))
+            (insert "\n"))
+          tables)
+    (display-buffer new-buffer)
+    (org-mode)))
+
 (defun org-req--parse-buffer ()
   "Parse the current `org-mode' buffer to produce a set of plist items.
 Each item has the following properties:
@@ -31,11 +46,11 @@ Each item has the following properties:
          (headlines (org-req--get-sub-headlines parsed-buffer))
          (items (mapcar 'org-req--parse-category headlines)))
     (org-req--link-traces (apply 'append items))
-    items))
+    (seq-filter 'identity items)))
 
 (defun org-req--parse-category (headline)
   "Return a simplified data-structure for items under the given HEADLINE."
-  (let* ((category-title (car (org-element-property :title headline)))
+  (let* ((category-title (car (org-element-property :raw-value headline)))
          (headlines (org-req--get-sub-headlines headline)))
     (unless (org-element-property :commentedp headline)
       (org-req--parse-items headlines category-title 1))))
@@ -57,13 +72,15 @@ index of the item under its parent CATEGORY."
                                   (org-element-property :title item)))
       (plist-put item-plist :ID
                  (org-element-property :ID item))
+      (plist-put item-plist :TAGS
+                 (org-element-property :tags item))
       (mapc put-prop (list :TRACES_TO :TRACES_FROM))
       (plist-put item-plist :CUSTOM_ID
                  (format "%s-%02d" category index))
       (plist-put item-plist :CATEGORY_ID category)
       (cons item-plist (org-req--parse-items (cdr items)
-                                        category
-                                        (+ 1 index))))))
+                                             category
+                                             (+ 1 index))))))
 
 (defun org-req--get-sub-headlines (element)
   "Return a list of all elements contained in ELEMENT that are headlines."
@@ -150,6 +167,26 @@ DESTINATION-LISTS is a list of list of items."
                                                    (plist-get item :CUSTOM_ID)))
                                                 chain))))
                         chains))))
+
+(defun org-req--items-to-tables (items)
+  "Translate list of ITEMS to a list of org table elements."
+  (mapcar (lambda (item-set)
+            (apply 'org-element-create
+                   (cons* 'table (list :name (plist-get (car item-set) :CATEGORY_ID))
+                          (mapcar 'org-req--item-to-table-row item-set))))))
+
+(defun org-req--item-to-table-row (item)
+  "Translate a single ITEM into an org table-row element.
+First column is the name, and the second column is the headline."
+  (let ((id-cell (org-element-create 'table-cell nil (plist-get item :CUSTOM_ID)))
+        (name-cell (org-element-create 'table-cell nil (plist-get item :TITLE))))
+    (org-element-create 'table-row nil id-cell name-cell)))
+
+(defun org-req--raw-element-contents (element)
+  "Return the raw contents of the org ELEMENT."
+  (let ((begin (org-element-property :contents-end element))
+        (end (org-element-property :contents-end element)))
+    (buffer-substring begin end)))
 
 (defun cons* (item &rest items)
   "Recursive cons on arbitrary number of ITEMS.
