@@ -50,7 +50,7 @@ Each item has the following properties:
 
 (defun org-req--parse-category (headline)
   "Return a simplified data-structure for items under the given HEADLINE."
-  (let* ((category-title (car (org-element-property :raw-value headline)))
+  (let* ((category-title (org-element-property :raw-value headline))
          (headlines (org-req--get-sub-headlines headline)))
     (unless (org-element-property :commentedp headline)
       (org-req--parse-items headlines category-title 1))))
@@ -69,7 +69,7 @@ index of the item under its parent CATEGORY."
                                         (split-string value)
                                       nil))))))
       (setq item-plist (plist-put item-plist :TITLE
-                                  (org-element-property :title item)))
+                                  (org-element-property :raw-value item)))
       (plist-put item-plist :ID
                  (org-element-property :ID item))
       (plist-put item-plist :TAGS
@@ -173,7 +173,8 @@ DESTINATION-LISTS is a list of list of items."
   (mapcar (lambda (item-set)
             (apply 'org-element-create
                    (cons* 'table (list :name (plist-get (car item-set) :CATEGORY_ID))
-                          (mapcar 'org-req--item-to-table-row item-set))))))
+                          (mapcar 'org-req--item-to-table-row item-set))))
+          items))
 
 (defun org-req--item-to-table-row (item)
   "Translate a single ITEM into an org table-row element.
